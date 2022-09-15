@@ -15,7 +15,80 @@
 #include "P2PConnection.h"
 #include "Sender.h"
 
-#define MAX_USER_MESSAGE_SIZE   4096
+#define MAX_USER_MESSAGE_SIZE       4096
+
+#define MMM_0_DEFAULT				0
+#define MMM_1_WAIT_TO_JOIN	        1
+#define MMM_2_REQUESTED_TO_JOIN		2
+#define MMM_3_ALLOW_DENY_LEAVE		3	
+#define MMM_4_LOBBY					4
+#define MMM_5_GGPO					5
+
+/*
+<0: MMM_0_DEFAULT>
+              [MATCH MAKING]
+
+                OPEN GAMES
+                    - (O)
+                    -
+
+            OPEN OR JOIN THE GAME
+
+            [OPEN] (LEAVE)
+                 [EXIT]
+
+
+<1: MMM_1_WAIT_TO_JOIN>
+              [MATCH MAKING]
+
+                OPEN GAMES
+                 PLAYER1 (X)
+                    -
+
+          WAITING FOR OTHERS TO JOIN
+
+            (OPEN) [LEAVE]
+                 [EXIT]
+
+
+<2: MMM_2_REQUESTED_TO_JOIN>
+              [MATCH MAKING]
+
+                OPEN GAMES
+                 PLAYER1 (X)
+                    -
+
+REQUESTED TO JOIN GAME. WAITING FOR HOST TO RESPOND
+
+            (OPEN) [LEAVE]
+                 [EXIT]
+
+
+<3: MMM_3_ALLOW_DENY_LEAVE>
+              [MATCH MAKING]
+
+                OPEN GAMES
+                 PLAYER1 (X)
+                    -
+
+          PLAYER2 WANTS TO JOIN
+
+            [ALLOW] [DENY]
+                 [LEAVE]
+
+
+<4: MMM_4_LOBBY>
+               [LOBBY]
+                         [READY]
+                         [READY]
+
+
+
+                [CANCEL] [START]
+
+
+<5: MMM_5_GGPO>
+*/
 
 class MatchMaker {
 private:
@@ -44,6 +117,8 @@ public:
     int userMessageSizeSent;
     int userMessageSizeReceived;
 
+    int menuMode;
+
 public:
     // init
     // -- internal
@@ -70,10 +145,4 @@ public:
     // test
     void testClientLoop();
     void testClient();
-
-    // utility
-    void copyStructToVector(void* s, std::vector<char>& v, int size);
-    void copyVectorToStruct(std::vector<char> v, void* s, int size);
-    int testCopyStructAndVector();
-    int checkParameters(int argc);
 };

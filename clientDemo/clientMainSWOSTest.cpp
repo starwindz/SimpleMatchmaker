@@ -19,7 +19,11 @@ void customUpdateMatchMakingMenu()
 
 int main(int argc, char** argv)
 {
-    if (!g_MatchMaker.checkParameters(argc)) return 0;
+    if (argc < 4) {
+        printf("invalid command line parameters\n");
+        printf("usage: Client <name> <ServerIP> <SeverPort>\n");
+        return 0;
+    }
 
     g_MatchMaker.init(argv[1], argv[2], std::atoi(argv[3]));
     g_MatchMaker.updateMatchMakingMenu = customUpdateMatchMakingMenu;

@@ -76,68 +76,71 @@ void MatchMaker::setCallbacks()
     // to console to show the user
     severCbs.Connected = []()
     {
-        std::cout << "[CALLBACK] severCbs.Connected\n";
+        //std::cout << "[CALLBACK] severCbs.Connected\n";
         std::cout << "Connected to server. Press g to create a game. d to disconnect.\n";
     };
 
     severCbs.Disconnected = []()
     {
-        std::cout << "[CALLBACK] severCbs.Disconnected\n";
+        //std::cout << "[CALLBACK] severCbs.Disconnected\n";
         std::cout << "Disconnected from server\n";
     };
 
     severCbs.Timeout = []()
     {
-        std::cout << "[CALLBACK] severCbs.Timeout\n";
+        //std::cout << "[CALLBACK] severCbs.Timeout\n";
         std::cout << "Timeout trying to connect to server\n";
     };
 
-    severCbs.JoinRequestFromOtherPlayer = [](const std::string& userName)
+    severCbs.JoinRequestFromOtherPlayer = [&](const std::string& userName)
     {
-        std::cout << "[CALLBACK] severCbs.JoinRequestFromOtherPlayer\n";
-        std::cout << userName << " Wants to join. y - allow. n - deny. l - leave game.\n";
+        //std::cout << "[CALLBACK] severCbs.JoinRequestFromOtherPlayer\n";
+        std::cout << "**[MM_3] " << userName << " Wants to join. y - allow. n - deny. l - leave game.\n";
+        menuMode = MMM_3_ALLOW_DENY_LEAVE;
     };
 
-    severCbs.JoinRequestOK = []()
+    severCbs.JoinRequestOK = [&]()
     {
-        std::cout << "[CALLBACK] severCbs.JoinRequestOK\n";
-        std::cout << "Requsted to join game. Waiting for host to respond. Press l to leave.\n";
+        //std::cout << "[CALLBACK] severCbs.JoinRequestOK\n";
+        std::cout << "**[MM_2] " << "Requsted to join game. Waiting for host to respond. Press l to leave.\n";
+        menuMode = MMM_2_REQUESTED_TO_JOIN;
     };
 
     severCbs.GameCreatedOK = []()
     {
-        std::cout << "[CALLBACK] severCbs.GameCreatedOK\n";
+        //std::cout << "[CALLBACK] severCbs.GameCreatedOK\n";
         std::cout << "We successfully created a game. Waiting for others to join. Press l to leave game.\n";
     };
 
     severCbs.StartP2P = [&](const GameStartInfo& info)
     {
-        std::cout << "[CALLBACK] severCbs.StartP2P\n";
-        std::cout << "Ready to Start game, info:\n" << info.ToString();
+        //std::cout << "[CALLBACK] severCbs.StartP2P\n";
+        std::cout << "**[MM_4] Ready to Start game, info:\n" << info.ToString();
         p2pClient.reset(new P2PConnection(info, [](const std::string& s) {std::cout << s; }));
+        menuMode = MMM_4_LOBBY;
     };
 
     severCbs.LeftGameOK = []()
     {
-        std::cout << "[CALLBACK] severCbs.LeftGameOK\n";
+        //std::cout << "[CALLBACK] severCbs.LeftGameOK\n";
         std::cout << "We left the game.\n";
     };
 
     severCbs.RemovedFromGame = []()
     {
-        std::cout << "[CALLBACK] severCbs.RemovedFromGame\n";
+        //std::cout << "[CALLBACK] severCbs.RemovedFromGame\n";
         std::cout << "We were removed from the game.\n";
     };
 
     severCbs.Approved = [](const std::string& name)
     {
-        std::cout << "[CALLBACK] severCbs.Approved\n";
+        //std::cout << "[CALLBACK] severCbs.Approved\n";
         std::cout << "Approved the join request of " << name << "\n";
     };
 
     severCbs.UserList = [](const std::vector<PlayerInfo>& userNames)
     {
-        std::cout << "[CALLBACK] severCbs.UserList\n";
+        //std::cout << "[CALLBACK] severCbs.UserList\n";
         std::cout << "Active Users: ";
         for (const auto& u : userNames) {
             auto userDataHash = hash_range(u.data.begin(), u.data.end());
@@ -149,14 +152,13 @@ void MatchMaker::setCallbacks()
 
     severCbs.ServerMessage = [](const std::string& msg)
     {
-        std::cout << "[CALLBACK] severCbs.ServerMessage\n";
+        //std::cout << "[CALLBACK] severCbs.ServerMessage\n";
         std::cout << "Server Message: " << msg << "\n";
     };
 
     severCbs.OpenGames = [&](const std::vector<std::string>& games)
     {
-        std::cout << "[CALLBACK] severCbs.OpenGames\n";
-
+        //std::cout << "[CALLBACK] severCbs.OpenGames\n";
         openGames = games;
         std::cout << "Open Games: ";
         bool isHosting = std::find(RANGE(games), loggedPlayerName) != games.end();
@@ -166,16 +168,24 @@ void MatchMaker::setCallbacks()
             if (u == loggedPlayerName)
                 std::cout << "[You]";
             std::cout << ", ";
+            i++;
         }
         if (openGames.size() == 0) {
             std::cout << "<none>";
             std::cout << "\n";
-            std::cout << "Press g to open a game\n";
+            std::cout << "**[MM_0] Press g to open a game\n";
+            menuMode = MMM_0_DEFAULT;
         }
         else {
             std::cout << "\n";
-            if (!isHosting)
-                std::cout << "Press <number> to request to join a game\n";
+            if (!isHosting) {
+                std::cout << "**[MM_0] Press <number> to request to join a game\n";
+                menuMode = MMM_0_DEFAULT;
+            }
+            else {
+                std::cout << "**[MM_1] Waiting for others to join\n";
+                menuMode = MMM_1_WAIT_TO_JOIN;
+            }
         }
 
         updateMatchMakingMenu();
@@ -183,8 +193,7 @@ void MatchMaker::setCallbacks()
 
     severCbs.GameInfo = [&](const GameInfoStruct& info)
     {
-        std::cout << "[CALLBACK] severCbs.GameInfo\n";
-
+        //std::cout << "[CALLBACK] severCbs.GameInfo\n";
         requestedJoiners = info.requested;
         joined = info.joined;
         std::cout << "GameInfo: " << info.ToString() << "\n";
@@ -195,7 +204,7 @@ void MatchMaker::setCallbacks()
     // hash of the message, so the sender can visually see it's correct   
     p2pCbs.ReceiveUserMessage = [&](const void* buffer, size_t sz)
     {
-        std::cout << "[CALLBACK] cbs.ReceiveUserMessage\n";
+        //std::cout << "[CALLBACK] cbs.ReceiveUserMessage\n";
         userMessageSizeReceived = sz;
         memcpy(userMessageReceived, (char*)buffer, userMessageSizeReceived);
 
@@ -224,9 +233,9 @@ void MatchMaker::setCallbacks()
 void MatchMaker::onStart()
 {
     std::cout << "[...] onStart\n";
-
-    std::cout << "P2PConnection closed and game can start, killed p2pClient\n";
+    std::cout << "**[MM_5] P2PConnection closed and game can start, killed p2pClient\n";
     p2pClient = nullptr;
+    menuMode = MMM_5_GGPO;
 };
 
 void MatchMaker::init(char* playerName, char* ip, int port)
@@ -258,8 +267,8 @@ void MatchMaker::processCallbacks()
 
 void MatchMaker::processServerCommands(int c)
 {
-    if (c > 1000) {
-        int idx = c - 1000 - 1;
+    if (c >= 1000) {
+        int idx = c - 1000;
         // std::cout << "pressed join game " << idx << "\n";
         if (openGames.size() > 0 && idx < (int)openGames.size())
             serverConnection->RequestToJoinGame(openGames[idx]);
@@ -332,7 +341,7 @@ void MatchMaker::processCommands(int c)
 {
     // command: match making
     if (!p2pClient) {
-        if (c >= '1' && c <= '9') c = 1000 + c - '1' + 1;
+        if (c >= '1' && c <= '9') c = 1000 + c - '1';
         processServerCommands(c);
     }
     // command: game lobby
@@ -367,67 +376,5 @@ void MatchMaker::testClient()
 {
     while (loop) {
         testClientLoop();
-    }
-}
-
-void MatchMaker::copyStructToVector(void* s, std::vector<char>& v, int size)
-{
-    char* buffer = new char[size];
-
-    memcpy(buffer, s, size);
-    v.clear();
-    for (int i = 0; i <= size - 1; i++) {
-        v.push_back(buffer[i]);
-    }
-
-    delete[] buffer;
-}
-
-void MatchMaker::copyVectorToStruct(std::vector<char> v, void* s, int size)
-{
-    char* buffer = new char[size];
-
-    for (int i = 0; i <= size - 1; i++) {
-        buffer[i] = v[i];
-    }
-    memcpy(s, buffer, size);
-
-    delete[] buffer;
-}
-
-int MatchMaker::testCopyStructAndVector()
-{
-    // copy myStruct to myVector
-    TestStruct myStruct;
-    std::vector<char> myVector;
-
-    myStruct.a = 'a';
-    myStruct.b = 'b';
-    copyStructToVector(&myStruct, myVector, sizeof(myStruct));
-
-    printf("%c\n", myVector[0]);
-    printf("%c\n", myVector[1]);
-
-    // reset
-    myStruct.a = 'x';
-    myStruct.b = 'y';
-
-    // copy myVector to myStruct
-    copyVectorToStruct(myVector, &myStruct, sizeof(myStruct));
-    printf("%c\n", myStruct.a);
-    printf("%c\n", myStruct.b);
-
-    return 0;
-}
-
-int MatchMaker::checkParameters(int argc)
-{
-    if (argc < 4) {
-        printf("invalid command line parameters\n");
-        printf("usage: Client <name> <ServerIP> <SeverPort>\n");
-        return 0;
-    }
-    else {
-        return 1;
     }
 }
