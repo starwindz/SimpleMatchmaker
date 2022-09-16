@@ -118,6 +118,8 @@ void MatchMaker::setCallbacks()
         std::cout << "**[MM_4] Ready to Start game, info:\n" << info.ToString();
         p2pClient.reset(new P2PConnection(info, [](const std::string& s) {std::cout << s; }));
         menuMode = MMM_4_LOBBY;
+
+        customStartP2P();
     };
 
     severCbs.LeftGameOK = []()
@@ -188,7 +190,7 @@ void MatchMaker::setCallbacks()
             }
         }
 
-        updateMatchMakingMenu();
+        getPagesInfoOpenGames();
     };
 
     severCbs.GameInfo = [&](const GameInfoStruct& info)
@@ -236,6 +238,8 @@ void MatchMaker::onStart()
     std::cout << "**[MM_5] P2PConnection closed and game can start, killed p2pClient\n";
     p2pClient = nullptr;
     menuMode = MMM_5_GGPO;
+
+    customOnStart();
 };
 
 void MatchMaker::init(char* playerName, char* ip, int port)
@@ -245,6 +249,7 @@ void MatchMaker::init(char* playerName, char* ip, int port)
     initServer(playerName, ip, port);
     setCallbacks();
 
+    menuMode = MMM_X_SERVER_NOT_CONNECTED;
     loop = true;
 }
 
@@ -367,7 +372,6 @@ void MatchMaker::testClientLoop()
             userMessageSizeSent = buffer.size();
             memcpy(userMessageSent, buffer.data(), userMessageSizeSent);
         }
-
         processCommands(c);  // <--
     }
 }
@@ -377,4 +381,24 @@ void MatchMaker::testClient()
     while (loop) {
         testClientLoop();
     }
+}
+
+void MatchMaker::getPagesInfoOpenGames()
+{
+    int numItems;
+    int prevCurPageOpenGames = curPageOpenGames;
+
+    numItems = openGames.size();
+    if (numItems % itemsPerPage == 0) {
+        totPageOpenGames = numItems / itemsPerPage;
+        if (totPageOpenGames == 0) totPageOpenGames = 1;
+    }
+    else {
+        totPageOpenGames = numItems / itemsPerPage + 1;
+    }
+    curPageOpenGames = 0;
+
+    //if (prevCurPageOpenGames < totPageOpenGames) {
+    //    curPageOpenGames = totPageOpenGames - 1;
+    //}
 }

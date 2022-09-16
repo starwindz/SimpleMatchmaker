@@ -17,6 +17,7 @@
 
 #define MAX_USER_MESSAGE_SIZE       4096
 
+#define MMM_X_SERVER_NOT_CONNECTED  -1
 #define MMM_0_DEFAULT				0
 #define MMM_1_WAIT_TO_JOIN	        1
 #define MMM_2_REQUESTED_TO_JOIN		2
@@ -118,6 +119,8 @@ public:
     int userMessageSizeReceived;
 
     int menuMode;
+    int itemsPerPage = 7;
+    int curPageOpenGames, totPageOpenGames;
 
 public:
     // init
@@ -135,7 +138,8 @@ public:
     // process
     // -- callbacks
     void processCallbacks();
-    std::function<void(void)> updateMatchMakingMenu;
+    std::function<void(void)> customOnStart;
+    std::function<void(void)> customStartP2P;
 
     // -- commands
     void processServerCommands(int c);
@@ -145,4 +149,7 @@ public:
     // test
     void testClientLoop();
     void testClient();
+
+    // misc
+    void getPagesInfoOpenGames();
 };

@@ -12,9 +12,12 @@
 
 MatchMaker g_MatchMaker;
 
-void customUpdateMatchMakingMenu()
+void customOnStart()
 {
-    //printf("customUpdateMatchMakingMenu()\n");
+}
+
+void customStartP2P()
+{
 }
 
 int main(int argc, char** argv)
@@ -26,7 +29,8 @@ int main(int argc, char** argv)
     }
 
     g_MatchMaker.init(argv[1], argv[2], std::atoi(argv[3]));
-    g_MatchMaker.updateMatchMakingMenu = customUpdateMatchMakingMenu;
+    g_MatchMaker.customOnStart = customOnStart;
+    g_MatchMaker.customStartP2P = customStartP2P;
 
     g_MatchMaker.testClient();
 
