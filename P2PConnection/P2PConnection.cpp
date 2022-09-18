@@ -2,6 +2,7 @@
 #include "Message.h"
 #include "Sender.h"
 using namespace std::chrono;
+
 P2PConnection::P2PConnection(GameStartInfo info, std::function<void(const std::string&)> logger) :
     m_info(info),
     localAddress{ ENET_HOST_ANY,info.port },
@@ -56,12 +57,36 @@ void P2PConnection::SendStart()
         return;
     }
     
-     Message::Make(MessageType::Info, "Start").OnData(SendTo(peerConnections[0]));
-     m_Start = true;
-     m_logger("Initiating Start process: Sent Start message, then disconnect\n");
-     for(auto& peer : peerConnections)
-         enet_peer_disconnect_later(peer, 0);
-    
+    Message::Make(MessageType::Info, "Start").OnData(SendTo(peerConnections[0]));
+    m_Start = true;
+    m_logger("Initiating Start process: Sent Start message, then disconnect\n");
+    for(auto& peer : peerConnections)
+        enet_peer_disconnect_later(peer, 0);    
+}
+
+void P2PConnection::SendCancel()
+{
+    if (m_Cancel)
+    {
+        m_logger("Already initiated Cancel process\n");
+        return;
+    }
+    if (!peerConnections.size())
+    {
+        m_logger("No peer connection\n");
+        return;
+    }
+    if (!m_bPrimaryConnectionEstablished)
+    {
+        m_logger("No primary connection agreed\n");
+        return;
+    }
+
+    Message::Make(MessageType::Info, "Cancel").OnData(SendTo(peerConnections[0]));
+    m_Cancel = true;
+    m_logger("Initiating Cancel process: Sent Cancel message, then disconnect\n");
+    for (auto& peer : peerConnections)
+        enet_peer_disconnect_later(peer, 0);
 }
 
 void P2PConnection::SendReady()
@@ -74,6 +99,32 @@ void P2PConnection::SendReady()
         Message::Make(MessageType::Info, "Ready").OnData(SendTo(peerConnections[0]));
         m_bMeReady = true;
         OnReadyChange();
+    }
+}
+
+void P2PConnection::SendReady(bool status)
+{
+    if (status) {
+        if (m_bMeReady)
+            return;
+
+        if (peerConnections.size())
+        {
+            Message::Make(MessageType::Info, "Ready").OnData(SendTo(peerConnections[0]));
+            m_bMeReady = true;
+            OnReadyChange();
+        }
+    }
+    else {
+        if (!m_bMeReady)
+            return;
+
+        if (peerConnections.size())
+        {
+            Message::Make(MessageType::Info, "Unready").OnData(SendTo(peerConnections[0]));
+            m_bMeReady = false;
+            OnReadyChange();
+        }
     }
 }
 
@@ -93,12 +144,20 @@ void P2PConnection::OnReadyChange()
         m_logger(m_info.playerNumber == 1 ? "Press S to start game\n" : "Waiting for player 1 to start game\n");
         
 }
+
 bool P2PConnection::ReadyToStart() const
 {
     bool allConnectionsDead = peerConnections.size() + outGoingPeerCandidates.size() == 0;
     bool ready = m_Start && allConnectionsDead;
     return ready;
 } 
+
+bool P2PConnection::ReadyToCancel() const
+{
+    bool allConnectionsDead = peerConnections.size() + outGoingPeerCandidates.size() == 0;
+    bool ready = m_Cancel && allConnectionsDead;
+    return ready;
+}
 
 void P2PConnection::Info()
 {
@@ -110,7 +169,7 @@ void P2PConnection::Info()
     m_logger("*********\n");
 }
 
-void P2PConnection::CleanRedundantConnections()
+void P2PConnection::CleanRedundantConnections(P2PCallbacks& callbacks)
 {
     if ( m_bPrimaryConnectionEstablished && TotalActivePeers()>1)
     {
@@ -123,7 +182,9 @@ void P2PConnection::CleanRedundantConnections()
             enet_peer_reset(outGoingPeerCandidates[i]);
 
         outGoingPeerCandidates.clear();
+        m_logger("P2PConnection::CleanRedundantConnection\n");
         Info();
+        callbacks.Connected();
     }
 }
 
@@ -182,7 +243,7 @@ void P2PConnection::SendUserMessage(char* buffer, size_t length)
 void P2PConnection::Update(P2PCallbacks& callbacks)
 {
     ENetEvent event;
-    CleanRedundantConnections();
+    CleanRedundantConnections(callbacks);
     if (m_bPrimaryConnectionEstablished && peerConnections.size() == 1)
         m_pingHandler.Update(peerConnections[0]);
 
@@ -228,7 +289,9 @@ void P2PConnection::Update(P2PCallbacks& callbacks)
                     m_logger(std::string("Incoming connection from unexpected peer: ") + ToReadableString(event.peer->address) + " bin it\n");
                     enet_peer_reset(event.peer);
                 }
+                m_logger("ENET_EVENT_TYPE_CONNECT\n");
                 Info();
+                callbacks.Connected();
                 break;
             }
             case ENET_EVENT_TYPE_RECEIVE:
@@ -286,9 +349,24 @@ void P2PConnection::Update(P2PCallbacks& callbacks)
                             m_logger("Other player intiated Start Process, expect disconnect soon\n");
                         }
                     }
+                    if (!strcmp(msg.Content(), "Cancel"))
+                    {
+                        if (m_Cancel)
+                            m_logger("Other player sent duplicate Cancel message\n");
+                        else
+                        {
+                            m_Cancel = true;
+                            m_logger("Other player intiated Cancel Process, expect disconnect soon\n");
+                        }
+                    }
                     if (!strcmp(msg.Content(), "Ready"))
                     {
                         m_bOtherReady = true;
+                        OnReadyChange();
+                    }
+                    if (!strcmp(msg.Content(), "Unready"))
+                    {
+                        m_bOtherReady = false;
                         OnReadyChange();
                     }
                 }
@@ -315,6 +393,7 @@ void P2PConnection::Update(P2PCallbacks& callbacks)
                 {
                     m_logger("Disconnect from unknown\n");
                 }
+                m_logger("ENET_EVENT_TYPE_DISCONNECT\n");
                 Info();
                 if (ReadyToStart())
                 {

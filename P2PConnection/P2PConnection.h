@@ -1,3 +1,17 @@
+/*
+1. adding callback functions for P2PConnection
+- Connected
+- Disconncted  (// not needed?)
+- PlayerReady
+- StartGame
+
+2. adding public functions for P2PConnection
+- void SendReady(bool status);  // status is true or false
+- bool MeReady();    // returns m_bMeReady
+- bool OtheReady();  // returns m_bOtherReady
+- bool PrimaryConnectionEstablished(); // returns m_bPrimaryConnectionEstablished
+*/
+
 #pragma once
 #include <functional>
 #include <enet/enet.h>
@@ -11,9 +25,9 @@
 struct P2PCallbacks
 {
     std::function<void()> Connected;
-    std::function<void()> Disconncted;
-    std::function<void()> PlayerReady;
-    std::function<void()> StartGame;
+    //std::function<void()> Disconncted;
+    //std::function<void()> PlayersReady;
+    //std::function<void()> StartGame;
     std::function<void(const void*,size_t)> ReceiveUserMessage;
 };
 
@@ -34,7 +48,6 @@ private:
     std::chrono::steady_clock::time_point lastPing;
 };
 
-
 class P2PConnection
 {
     // Can't copy or move
@@ -46,10 +59,13 @@ public:
     P2PConnection(GameStartInfo info,std::function<void(const std::string&)> logger);
     ~P2PConnection();    
     void SendReady();
+    void SendReady(bool status);
     void Update(P2PCallbacks& callbacks);
     bool ReadyToStart() const;
+    bool ReadyToCancel() const;
     void Info();
     void SendStart();
+    void SendCancel();
     double GetPing() const;
     void SendUserMessage(char* buffer, size_t length);
 private:
@@ -59,16 +75,29 @@ private:
     std::vector<ENetPeer*> outGoingPeerCandidates;
     std::vector<ENetPeer*> peerConnections;
     bool m_bMeReady=false;
+    bool MeReady()
+    {
+        return m_bMeReady;
+    }
     bool m_bOtherReady=false;
+    bool OtherReady()
+    {
+        return m_bMeReady;
+    }
     bool m_Start = false;
+    bool m_Cancel = false;
     void OnReadyChange();
     
     bool m_bPrimaryConnectionEstablished = false;
+    bool PrimaryConnectionEstablished()
+    {
+        return m_bPrimaryConnectionEstablished;
+    }
     size_t TotalActivePeers() const {
         return outGoingPeerCandidates.size() + peerConnections.size();
     }
     std::function<void(std::string)> m_logger;
-    void CleanRedundantConnections();
+    void CleanRedundantConnections(P2PCallbacks& callbacks);
     PingHandler m_pingHandler;
     enum class P2PState { Connecting, Connected, Ready};
 };
