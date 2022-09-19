@@ -148,14 +148,14 @@ void P2PConnection::OnReadyChange()
 bool P2PConnection::ReadyToStart() const
 {
     bool allConnectionsDead = peerConnections.size() + outGoingPeerCandidates.size() == 0;
-    bool ready = m_Start && allConnectionsDead;
+    bool ready = m_Start && !m_Cancel && allConnectionsDead;
     return ready;
 } 
 
 bool P2PConnection::ReadyToCancel() const
 {
     bool allConnectionsDead = peerConnections.size() + outGoingPeerCandidates.size() == 0;
-    bool ready = m_Cancel && allConnectionsDead;
+    bool ready = !m_Start && m_Cancel && allConnectionsDead;
     return ready;
 }
 
