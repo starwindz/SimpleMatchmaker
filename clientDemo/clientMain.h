@@ -123,6 +123,9 @@ public:
     bool ggpoGo = false;
     bool testLoop = true;
 
+    GameStartInfo gameStartInfo;
+    int curPing = 0;
+
 public:
     // init
     // -- internal

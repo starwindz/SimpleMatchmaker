@@ -114,6 +114,7 @@ void MatchMaker::setCallbacks()
         p2pClient.reset(new P2PConnection(info, [](const std::string& s) {std::cout << s; }));
         menuMode = MMM_4_LOBBY;
 
+        gameStartInfo = info;
         customStartP2P();
     };
 
@@ -277,13 +278,14 @@ void MatchMaker::close()
 
 void MatchMaker::processCallbacks()
 {
-    serverConnection->Update(severCbs);
+    if (serverConnection)
+        serverConnection->Update(severCbs);
 
     if (p2pClient) {
         p2pClient->Update(p2pCbs);
         if (p2pClient->ReadyToStart())
             onStart();
-        if (p2pClient->ReadyToCancel())
+        else if (p2pClient->ReadyToCancel())
             onCancel();
     }
 }
@@ -340,11 +342,14 @@ void MatchMaker::processP2PCommands(int c)
         p2pClient = nullptr;
     }
     else if (c == 'p') {
-        auto ping = p2pClient->GetPing();
-        std::cout << "Ping to opponent is " << ping << "\n";
+        curPing = p2pClient->GetPing();
+        std::cout << "Ping to opponent is " << curPing << "\n";
     }
     else if (c == 'r') {
         p2pClient->SendReady();
+    }
+    else if (c == 'u') {
+        p2pClient->SendReady(false);
     }
     else if (c == 'l') {
         p2pClient = nullptr;
