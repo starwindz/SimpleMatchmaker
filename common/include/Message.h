@@ -18,7 +18,10 @@ enum class MessageType
     PlayersActive,    
     GamesOpen,
     GameInfo,
-    UserMessage
+    UserMessage,
+    Ready,
+	Cancel,
+	Unready
 };
 
 class BadMessageException : public std::exception {};
