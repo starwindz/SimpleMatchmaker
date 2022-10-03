@@ -3,9 +3,18 @@
 #include "Utils.h"
 #include "Message.h"
 #include "Sender.h"
-#include <ws2tcpip.h>
 #include <algorithm>
 
+#ifdef _WIN32
+#include <ws2tcpip.h>
+#include <IPTypes.h>
+#include <iphlpapi.h>
+#else
+#include <sys/types.h>
+#include <ifaddrs.h>
+#include <net/if.h>
+#include <cstring>
+#endif
 GameInfoStruct::GameInfoStruct(const std::string& msg)
 {
     auto parts = stringSplit(msg, ':');
@@ -54,32 +63,152 @@ ServerConnection::~ServerConnection()
 {
     Disconnect();    
 }
+#ifdef _WIN32
+std::vector<uint32_t> ServerConnection::ReturnLocalIPv4() const
+{
+    printf("Discover local IPv4 addresses\n");
+    std::vector<uint32_t> addresses;
+    IP_ADAPTER_ADDRESSES* adapter_addresses(NULL);
+    IP_ADAPTER_ADDRESSES* adapter(NULL);
 
+    DWORD adapter_addresses_buffer_size = 16 * 1024;
+    std::vector<char> buffer;
+    // Get adapter addresses
+    for (int attempts = 0; attempts != 3; ++attempts) {
+        buffer.resize(adapter_addresses_buffer_size);
+        adapter_addresses = (IP_ADAPTER_ADDRESSES*)buffer.data();
 
-uint32_t ServerConnection::ReturnLocalIPv4() const{
-    char host[256];
-    char* IP;
-    struct hostent* host_entry;
-    int hostname;
-    hostname = gethostname(host, sizeof(host)); //find the host name
+        DWORD error = ::GetAdaptersAddresses(AF_UNSPEC,
+            GAA_FLAG_SKIP_ANYCAST |
+            GAA_FLAG_SKIP_MULTICAST |
+            GAA_FLAG_SKIP_DNS_SERVER |
+            GAA_FLAG_SKIP_FRIENDLY_NAME,
+            NULL,
+            adapter_addresses,
+            &adapter_addresses_buffer_size);
 
-    host_entry = gethostbyname(host); //find host information
+        if (ERROR_SUCCESS == error) {
+            break;
+        }
+        else if (ERROR_BUFFER_OVERFLOW == error) {
+            // Try again with the new size
+            continue;
+        }
+        else {
+            // Unexpected error code - return empty list
+            return{};
+        }
+    }
 
-    auto addr = *((struct in_addr*)host_entry->h_addr_list[0]);
-    IP = inet_ntoa(addr); //Convert into IP string
-    m_logger(std::string("Current Host Name: ")+ host+"\n");
-    // printf("Internal IP: %s\n", IP);
-    return addr.S_un.S_addr;
+    // Iterate through all of the adapters
+    for (adapter = adapter_addresses; NULL != adapter; adapter = adapter->Next) {
+        // Skip loopback adapters
+        if (IF_TYPE_SOFTWARE_LOOPBACK == adapter->IfType)
+            continue;            
+
+        // Parse all IPv4 addresses
+        for (IP_ADAPTER_UNICAST_ADDRESS* address = adapter->FirstUnicastAddress; NULL != address; address = address->Next) {
+            auto family = address->Address.lpSockaddr->sa_family;
+            if (AF_INET == family) {
+                SOCKADDR_IN* ipv4 = reinterpret_cast<SOCKADDR_IN*>(address->Address.lpSockaddr);
+                char str_buffer[16] = { 0 };
+                inet_ntop(AF_INET, &(ipv4->sin_addr), str_buffer, 16);
+                // These are unconnected adapters
+                if (strncmp("169.254", str_buffer, strlen("169.254")) == 0)
+                {
+                    continue;
+                }
+                auto num = ipv4->sin_addr.S_un.S_addr;
+                printf("[ADAPTER]: %S\n", adapter->Description);
+                printf("[NAME]:    %S\n", adapter->FriendlyName);
+                printf("[IP]:      %s,%d\n", str_buffer, num);
+                printf("\n");
+               
+                addresses.push_back(num);
+            }
+        }
+    }
+    return addresses;
 }
+#else
+std::vector<uint32_t> ServerConnection::ReturnLocalIPv4() const{
+  std::vector<uint32_t> addresses;
 
+
+  struct ifaddrs* myaddrs, * ifa;
+  void* in_addr;
+  char buf[64];
+
+  if (getifaddrs(&myaddrs) != 0)
+  {
+      perror("getifaddrs");
+      exit(1);
+  }
+
+  for (ifa = myaddrs; ifa != NULL; ifa = ifa->ifa_next)
+  {
+      if (ifa->ifa_addr == NULL)
+          continue;
+      if (!(ifa->ifa_flags & IFF_UP))
+          continue;
+
+      switch (ifa->ifa_addr->sa_family)
+      {
+      case AF_INET:
+      {
+          struct sockaddr_in* s4 = (struct sockaddr_in*)ifa->ifa_addr;
+          in_addr = &s4->sin_addr;
+          char str_buffer[16] = { 0 };
+          inet_ntop(AF_INET, (in_addr), str_buffer, 16);
+          if (strncmp("127", str_buffer, strlen("127")) == 0)
+          {
+              continue;
+          }
+          auto num = s4->sin_addr.s_addr;
+          printf("[IP]:      %s,%d\n", str_buffer, num);
+          addresses.push_back(num);
+          break;
+      }
+
+      case AF_INET6:
+      {
+          struct sockaddr_in6* s6 = (struct sockaddr_in6*)ifa->ifa_addr;
+          in_addr = &s6->sin6_addr;
+          char str_buffer[128] = { 0 };
+          inet_ntop(AF_INET6, (in_addr), str_buffer, 128);
+          printf("[IP6 (ignore):      %s\n", str_buffer);
+          break;
+      }
+
+      default:
+          continue;
+      }
+
+      if (!inet_ntop(ifa->ifa_addr->sa_family, in_addr, buf, sizeof(buf)))
+      {
+          printf("%s: inet_ntop failed!\n", ifa->ifa_name);
+      }
+      else
+      {
+          printf("%s: %s\n", ifa->ifa_name, buf);
+      }
+  }
+
+  freeifaddrs(myaddrs);
+
+    return addresses;
+}
+#endif
 
 
 ServerConnection::ServerConnection(std::function<void(const std::string&)> logger) :
     m_state(ServerConnectionState::Idle),
     m_local(nullptr, [](ENetHost*) {}),
     m_logger(logger)
-{
-    
+{    
+    auto localIPv4s = ReturnLocalIPv4();
+    for (auto ip : localIPv4s)
+        m_localAddresses.push_back({ ip,0 });
 }
 
 ServerConnection::ServerConnection(
@@ -96,6 +225,8 @@ ServerConnection::ServerConnection(
 
 bool ServerConnection::Connect(const std::string& serverIP, int serverPort, const std::string& userName,  const void* userData, size_t userDataLength, const std::string& gameID)
 { 
+    if (m_localAddresses.size() == 0)
+        return false;
     if (m_state != ServerConnectionState::Idle)
         return false;
   
@@ -110,7 +241,8 @@ bool ServerConnection::Connect(const std::string& serverIP, int serverPort, cons
         return false;
 
     m_local = ENetHostPtr(enet_host_create(nullptr, 1, 0, 0, 0), enet_host_destroy);  
-
+    if (!m_local)
+        return false;
  
 
     enet_address_set_host_ip(&m_serverAddress, serverIP.c_str());
@@ -119,17 +251,17 @@ bool ServerConnection::Connect(const std::string& serverIP, int serverPort, cons
     m_state = ServerConnectionState::Connecting;
 
    
-   
+
     m_gameID = gameID;
     return true;
 }
 
-bool ServerConnection::RequestToJoinGame(const std::string& gameOwner) const 
+bool ServerConnection::RequestToJoinGame(const std::string& gameOwner) const
 {
     if (m_server)
         Message::Make(MessageType::Join, gameOwner).OnData(SendTo(m_server));
 
-    return true;  
+    return true;
 }
 bool ServerConnection::ApproveJoinRequest(const std::string& player)
 {
@@ -155,14 +287,14 @@ bool ServerConnection::LeaveGame() const
 
 bool ServerConnection::CreateGame() const
 {
-    if(m_server)
+    if (m_server)
         Message::Make(MessageType::Create, "2,2").OnData(SendTo(m_server));
     return true;
 }
 
 bool ServerConnection::StartGame() const
 {
-    if(m_server)
+    if (m_server)
         Message::Make(MessageType::Start, "").OnData(SendTo(m_server));
     return true;
 }
@@ -181,7 +313,8 @@ bool ServerConnection::Disconnect()
 std::vector<PlayerInfo> ParsePlayerInfo(const void* data, size_t len)
 {
     std::vector<PlayerInfo> info;
-    std::string message((const char*)data, len);
+    auto asChar = (const char*)data;
+    std::string message(asChar, len);
     auto pos = message.find_first_of(':');
     auto numberOfPlayers = std::stoul(message.substr(0, pos++));
 
@@ -190,11 +323,11 @@ std::vector<PlayerInfo> ParsePlayerInfo(const void* data, size_t len)
         auto next = message.find_first_of(':', pos);
         auto name = message.substr(pos, next - pos);
         pos = next;
-        next= message.find_first_of(':', ++pos);
-        auto lengthOfUserData = std::stoul(message.substr(pos, next-pos));
+        next = message.find_first_of(':', ++pos);
+        auto lengthOfUserData = std::stoul(message.substr(pos, next - pos));
         pos = ++next;
         next = pos + lengthOfUserData;
-        std::vector<char> data ((char*)data+pos, (char*)data + next);
+        std::vector<char> data(asChar + pos, asChar + next);
         pos = next;
         info.push_back({ name,data });
     }
@@ -208,17 +341,27 @@ void ServerConnection::Update(ServerCallbacks& callbacks)
     while (enet_host_service(m_local.get(), &event, 1) > 0)
     {
         switch (event.type) {
-        case ENET_EVENT_TYPE_CONNECT:        {
-           // std::cout << "connect event, ip:  " << ToReadableString(event.peer->address) << "\n";
+        case ENET_EVENT_TYPE_CONNECT: {
+            // std::cout << "connect event, ip:  " << ToReadableString(event.peer->address) << "\n";
 
             if (event.peer == m_server && m_serverAddress == event.peer->address) {
- 
+
                 m_state = ServerConnectionState::Connected;
                 // Send the details needed to the server
                 Message::Make(MessageType::Version, m_gameID).OnData(SendTo(m_server));
-                enet_socket_get_address(m_local->socket, &m_localAddress);
-                m_localAddress.host = ReturnLocalIPv4();
-                Message::Make(MessageType::Info, ToString(m_localAddress)).OnData(SendTo(m_server));
+            
+                std::string ipMessage;
+                for (size_t i=0; i< m_localAddresses.size(); i++)
+                {
+                    auto ip = m_localAddresses[i].host;
+                    enet_socket_get_address(m_local->socket, &m_localAddresses[i]);
+                    m_localAddresses[i].host = ip;
+                    if (i > 0)
+                        ipMessage += ",";
+                    ipMessage += ToString(m_localAddresses[i]);
+                }
+              
+                Message::Make(MessageType::Info, ipMessage).OnData(SendTo(m_server));
                 Message::Make(MessageType::Login, m_userName+":"+std::string(m_userData.data(),m_userData.size())).OnData(SendTo(m_server));
             }
             else
@@ -295,17 +438,27 @@ void ServerConnection::Update(ServerCallbacks& callbacks)
                 auto parts = stringSplit(msg.Content(),',');
                 m_startGameInfo->playerNumber = std::stoi(parts[0]);
                 m_startGameInfo->peerName = parts[1];
-                m_startGameInfo->port = m_localAddress.port;
+                ENetAddress temp;
+                enet_socket_get_address(m_local->socket, &temp);
+                m_startGameInfo->port = temp.port;
 
                 ENetAddress addr;
-                if (TryParseIPAddress(parts[2], addr))
+                for (size_t i = 2; i < parts.size(); i++)
+                {
+                    if (TryParseIPAddress(parts[i], addr))
+                    {
+                        if(!contains(m_startGameInfo->peerAddresses,addr))
+                            m_startGameInfo->peerAddresses.push_back(addr);
+                    }
+                }
+                /*if (TryParseIPAddress(parts[2], addr))
                     m_startGameInfo->peerAddresses.push_back(addr);
 
                 if (TryParseIPAddress(parts[3], addr))
                 {
                     if(addr != m_startGameInfo->peerAddresses.back())
                         m_startGameInfo->peerAddresses.push_back(addr);
-                }
+                }*/
 
                 enet_peer_disconnect(m_server,0);
                 break;
