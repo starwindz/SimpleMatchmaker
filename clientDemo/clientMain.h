@@ -92,9 +92,6 @@ private:
     ServerCallbacks severCbs;
     P2PCallbacks p2pCbs;
 
-    std::unique_ptr<ServerConnection> serverConnection;
-    std::unique_ptr<P2PConnection> p2pClient;
-
     std::string loggedPlayerName;
     std::string serverIP;;
     int serverPort;
@@ -105,10 +102,15 @@ private:
     std::size_t blobHash;
 
 public:
+    std::unique_ptr<ServerConnection> serverConnection;
+    std::unique_ptr<P2PConnection> p2pClient;
+
     std::vector<std::string> openGames;
     std::vector<std::string> requestedJoiners;
     std::vector<std::string> joined;
     std::vector<PlayerInfo> users;
+    bool userRemoved = false;
+    int curJoinerIndex = 0;
 
     char userMessageSent[MAX_USER_MESSAGE_SIZE];
     char userMessageReceived[MAX_USER_MESSAGE_SIZE];
@@ -118,13 +120,18 @@ public:
     int menuMode;
     int itemsPerPage = 7;
     int curPageOpenGames, totPageOpenGames;
+    int itemsPerPageUsers = 10;
+    int curPageUsers, totPageUsers;
 
     int requestedOpenGameID = -1;
     bool ggpoGo = false;
     bool testLoop = true;
 
     GameStartInfo gameStartInfo;
-    int curPing = 0;
+    GGPOStartInfo ggpoStartInfo;
+
+    double curPing = 0;
+    int pingCnt = 0;
 
 public:
     // init
@@ -138,19 +145,24 @@ public:
 
     // -- external
     void init(const char* playerName, const char* ip, int port);
+    void init(const char* playerName);
     void close();
 
     // process
-    // -- callbacks
-    void processCallbacks();
+    // -- custom additional functions for callbacks
+    void processCallbacks(bool checkPing);
     std::function<void(void)> customStartP2P;
+    std::function<void(void)> customStartP2P_1;
+    std::function<void(void)> customStartP2P_2;
     std::function<void(void)> customP2PConnected;
 
     std::function<void(void)> customSendUserMessage;
     std::function<void(void)> customReceiveUserMessage;
 
-    std::function<void(void)> customOnStart;
-    std::function<void(void)> customOnCancel;
+    std::function<void(void)> customStartGame;
+    std::function<void(void)> customCancelGame;
+
+    std::function<void(void)> customJoinRequestFromOtherPlayer;
 
     // -- commands
     void processServerCommands(int c);
@@ -162,4 +174,5 @@ public:
 
     // misc
     void getPagesInfoOpenGames();
+    void getPagesInfoUsers();
 };
