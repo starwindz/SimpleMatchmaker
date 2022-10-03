@@ -148,7 +148,7 @@ void Connections::BroadcastMessage(const Message& m) const
 {
     auto activeUsers = AsPeers(ActivePlayers());
     m.OnData(SendTo(activeUsers));
-    m.OnData([](const std::string s) {std::cout << "Broadcast: " << s << "\n"; });
+    std::cout << "Broadcast message: " << (int)m.Type() << "\n";
 }
 void Connections::BroadcastActiveUsers() const
 {
@@ -239,8 +239,12 @@ bool Connections::StartGame(User* owner)
     if (canStart)
     {
         User* p2 = it->FirstJoiner();
-        std::string gameInfo1 = std::string("1") + "," + p2->Name() + ","+ ToString(p2->Peer()->address) + "," + ToString(p2->LocalIP());
-        std::string gameInfo2 = std::string("2") + "," + owner->Name() + "," + ToString(owner->Peer()->address) + "," + ToString(owner->LocalIP());
+        std::string gameInfo1 = std::string("1") + "," + p2->Name() + "," + ToString(p2->Peer()->address);
+        for(const auto& ip : p2->LocalIPs())
+            gameInfo1 += "," + ToString(ip);
+        std::string gameInfo2 = std::string("2") + "," + owner->Name() + "," + ToString(owner->Peer()->address);// +"," + ToString(owner->LocalIP());
+        for (const auto& ip : owner->LocalIPs())
+            gameInfo2 += "," + ToString(ip);
         std::cout << "Users starting a game, sending\n";
         auto m1 = Message::Make(MessageType::Start, gameInfo1); 
         m1.OnData(SendTo(owner->Peer()));

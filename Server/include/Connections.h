@@ -4,9 +4,9 @@
 #include <string>
 #include "Utils.h"
 #include "Game.h"
+
 class User;
 class Message;
-
 
 class Connections : public IConnections
 {

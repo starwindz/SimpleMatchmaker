@@ -6,6 +6,7 @@
 #include <iostream>
 #include "IConnections.h"
 #include "UserChangedStateVisitor.h"
+#include "Utils.h"
 class Message;
 
 struct StateNameVisitor {
@@ -21,7 +22,7 @@ public:
     User(ENetPeer* peer, IConnections* connections);
     ~User();
 
-    const ENetAddress& LocalIP() const { return m_localIP; }
+    const std::vector<ENetAddress>& LocalIPs() const { return m_localIPs; }
     const std::string& Name() const { return m_name; }
     const std::string& Data() const { return m_data; }
     const std::string& Version() const { return m_version; }
@@ -66,7 +67,7 @@ public:
     }
     
 private:
-    ENetAddress m_localIP;
+    std::vector<ENetAddress> m_localIPs;
     IConnections* m_connections;
     ENetPeer* m_peer;
     std::string m_name;
